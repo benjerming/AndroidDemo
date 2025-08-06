@@ -1,0 +1,62 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- 左侧羊驼 -->
+    <!-- 身体 -->
+    <path android:fillColor="#F5DEB3" android:pathData="M33,45 Q28,40 28,50 Q28,65 33,70 Q43,70 48,65 Q48,50 43,45 Z"/>
+
+    <!-- 头部 -->
+    <path android:fillColor="#F5DEB3" android:pathData="M38,35 Q33,30 33,40 Q33,45 38,50 Q43,50 48,45 Q48,40 43,35 Q40,30 38,35 Z"/>
+
+    <!-- 脖子 -->
+    <path android:fillColor="#F5DEB3" android:pathData="M40,40 Q38,42 38,48 Q40,50 43,48 Q45,42 43,40 Q41,38 40,40 Z"/>
+
+    <!-- 耳朵 -->
+    <path android:fillColor="#DEB887" android:pathData="M35,32 Q33,30 34,34 Q36,36 38,34 Q37,30 35,32 Z"/>
+    <path android:fillColor="#DEB887" android:pathData="M43,32 Q45,30 44,34 Q42,36 40,34 Q41,30 43,32 Z"/>
+
+    <!-- 眼睛 -->
+    <path android:fillColor="#000000" android:pathData="M36,38m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+    <path android:fillColor="#000000" android:pathData="M43,38m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+
+    <!-- 鼻子 -->
+    <path android:fillColor="#000000" android:pathData="M39,42 Q38,41 40,41 Q41,42 39,42 Z"/>
+
+    <!-- 腿部 -->
+    <path android:fillColor="#DEB887" android:pathData="M31,68 Q30,70 30,75 Q32,77 34,75 Q34,70 33,68 Z"/>
+    <path android:fillColor="#DEB887" android:pathData="M35,68 Q34,70 34,75 Q36,77 38,75 Q38,70 37,68 Z"/>
+    <path android:fillColor="#DEB887" android:pathData="M41,68 Q40,70 40,75 Q42,77 44,75 Q44,70 43,68 Z"/>
+    <path android:fillColor="#DEB887" android:pathData="M45,68 Q44,70 44,75 Q46,77 48,75 Q48,70 47,68 Z"/>
+
+    <!-- 右侧羊驼 -->
+    <!-- 身体 -->
+    <path android:fillColor="#FFE4B5" android:pathData="M67,45 Q62,40 62,50 Q62,65 67,70 Q77,70 82,65 Q82,50 77,45 Z"/>
+
+    <!-- 头部 -->
+    <path android:fillColor="#FFE4B5" android:pathData="M72,35 Q67,30 67,40 Q67,45 72,50 Q77,50 82,45 Q82,40 77,35 Q74,30 72,35 Z"/>
+
+    <!-- 脖子 -->
+    <path android:fillColor="#FFE4B5" android:pathData="M74,40 Q72,42 72,48 Q74,50 77,48 Q79,42 77,40 Q75,38 74,40 Z"/>
+
+    <!-- 耳朵 -->
+    <path android:fillColor="#F0E68C" android:pathData="M69,32 Q67,30 68,34 Q70,36 72,34 Q71,30 69,32 Z"/>
+    <path android:fillColor="#F0E68C" android:pathData="M77,32 Q79,30 78,34 Q76,36 74,34 Q75,30 77,32 Z"/>
+
+    <!-- 眼睛 -->
+    <path android:fillColor="#000000" android:pathData="M70,38m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+    <path android:fillColor="#000000" android:pathData="M77,38m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+
+    <!-- 鼻子 -->
+    <path android:fillColor="#000000" android:pathData="M73,42 Q72,41 74,41 Q75,42 73,42 Z"/>
+
+    <!-- 腿部 -->
+    <path android:fillColor="#F0E68C" android:pathData="M65,68 Q64,70 64,75 Q66,77 68,75 Q68,70 67,68 Z"/>
+    <path android:fillColor="#F0E68C" android:pathData="M69,68 Q68,70 68,75 Q70,77 72,75 Q72,70 71,68 Z"/>
+    <path android:fillColor="#F0E68C" android:pathData="M75,68 Q74,70 74,75 Q76,77 78,75 Q78,70 77,68 Z"/>
+    <path android:fillColor="#F0E68C" android:pathData="M79,68 Q78,70 78,75 Q80,77 82,75 Q82,70 81,68 Z"/>
+
+    <!-- 装饰性小草 -->
+    <path android:fillColor="#90EE90" android:pathData="M54,78 Q52,75 54,80 Q56,82 58,80 Q56,75 54,78 Z"/>
+    <path android:fillColor="#90EE90" android:pathData="M50,80 Q48,77 50,82 Q52,84 54,82 Q52,77 50,80 Z"/>
+    <path android:fillColor="#90EE90" android:pathData="M58,80 Q56,77 58,82 Q60,84 62,82 Q60,77 58,80 Z"/>
+
+</vector>
