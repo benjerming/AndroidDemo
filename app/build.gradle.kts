@@ -2,12 +2,12 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.rust.android)
 }
 
 android {
     namespace = "androidx.appcompat.demo"
     compileSdk = 36
-    ndkVersion = "29.0.13599879"
 
     defaultConfig {
         applicationId = "androidx.appcompat.demo"
@@ -26,7 +26,7 @@ android {
     buildTypes {
         debug {
             ndk {
-                abiFilters.addAll(setOf("arm64-v8a"))
+                abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a"))
             }
         }
         release {
@@ -46,13 +46,18 @@ android {
     buildFeatures {
         compose = true
     }
+}
 
-    externalNativeBuild {
-        cmake {
-            path("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
+tasks.configureEach {
+    if (name == "javaPreCompileDebug" || name == "javaPreCompileRelease") {
+        dependsOn("cargoBuild")
     }
+}
+
+cargo {
+    module = "../"
+    libname = "demo"
+    targets = listOf("arm64", "arm")
 }
 
 dependencies {

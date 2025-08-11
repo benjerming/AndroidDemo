@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 应用缓存目录 -->
+    <cache-path name="shared_files" path="." />
+    
+    <!-- 应用内部存储目录 -->
+    <files-path name="internal_files" path="." />
+    
+    <!-- 外部存储应用目录 -->
+    <external-files-path name="external_files" path="." />
+</paths>

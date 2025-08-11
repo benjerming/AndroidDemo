@@ -1,6 +1,11 @@
 package androidx.appcompat.demo
 
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -25,8 +31,73 @@ import androidx.compose.ui.zIndex
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.appcompat.demo.ui.theme.DemoTheme
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
+
+
+
+// 创建临时文件并写入内容
+fun createTextFile(context: Context, content: String, title: String = "应用结果"): File? {
+    return try {
+        // 创建文件名（包含时间戳）
+        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        val timestamp = dateFormat.format(Date())
+        val fileName = "${title}_$timestamp.txt"
+        
+        // 在应用的缓存目录创建文件
+        val file = File(context.cacheDir, fileName)
+        
+        // 写入内容
+        FileWriter(file).use { writer ->
+            writer.write(content)
+        }
+        
+        file
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+// 分享文本文件到其他应用
+fun shareTextFile(context: Context, content: String, title: String = "应用结果"): Boolean {
+    return try {
+        // 创建临时文件
+        val file = createTextFile(context, content, title) ?: return false
+        
+        // 使用FileProvider获取URI
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        
+        // 创建分享Intent
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            putExtra(Intent.EXTRA_TEXT, "分享的文本文件：${file.name}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        
+        // 启动分享选择器
+        val chooserIntent = Intent.createChooser(shareIntent, "分享文本文件")
+        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooserIntent)
+        
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -37,6 +108,66 @@ class MainActivity : ComponentActivity() {
 
     // 声明native方法  
     external fun loadFontsInfo(directory: String): String
+    external fun copyFontFiles(sourceDirectory: String, targetDirectory: String, overwriteExisting: Boolean): String
+    external fun parseFontsDirectory(directory: String): String
+
+    // 文件夹选择器回调
+    private var onSourceFolderSelected: ((String) -> Unit)? = null
+    private var onTargetFolderSelected: ((String) -> Unit)? = null
+    private var onParseFolderSelected: ((String) -> Unit)? = null
+
+    // 文件夹选择器启动器
+    private val folderPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            val path = getRealPathFromURI(selectedUri) ?: selectedUri.toString()
+            when {
+                onSourceFolderSelected != null -> {
+                    onSourceFolderSelected?.invoke(path)
+                    onSourceFolderSelected = null
+                }
+                onTargetFolderSelected != null -> {
+                    onTargetFolderSelected?.invoke(path)
+                    onTargetFolderSelected = null
+                }
+                onParseFolderSelected != null -> {
+                    onParseFolderSelected?.invoke(path)
+                    onParseFolderSelected = null
+                }
+            }
+        }
+    }
+
+    // 尝试从URI获取真实路径
+    private fun getRealPathFromURI(uri: Uri): String? {
+        // 对于Android 11+，通常需要使用DocumentFile API
+        // 这里简化处理，返回URI的路径部分
+        return uri.path?.let { path ->
+            // 去掉前缀，只保留实际路径
+            when {
+                path.startsWith("/tree/primary:") -> "/storage/emulated/0/" + path.substring(14)
+                path.startsWith("/tree/") -> path.substring(6)
+                else -> path
+            }
+        }
+    }
+
+    // 启动文件夹选择器的辅助方法
+    fun selectSourceFolder(callback: (String) -> Unit) {
+        onSourceFolderSelected = callback
+        folderPickerLauncher.launch(null)
+    }
+
+    fun selectTargetFolder(callback: (String) -> Unit) {
+        onTargetFolderSelected = callback
+        folderPickerLauncher.launch(null)
+    }
+
+    fun selectParseFolder(callback: (String) -> Unit) {
+        onParseFolderSelected = callback
+        folderPickerLauncher.launch(null)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +179,12 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
-                        onLoadFontsInfoCall = { directory -> loadFontsInfo(directory) }
+                        mainActivity = this@MainActivity,
+                        onLoadFontsInfoCall = { directory -> loadFontsInfo(directory) },
+                        onCopyFontFilesCall = { sourceDir, targetDir, overwrite -> 
+                            copyFontFiles(sourceDir, targetDir, overwrite) 
+                        },
+                        onParseFontsCall = { directory -> parseFontsDirectory(directory) }
                     )
                 }
             }
@@ -223,7 +359,10 @@ fun FloatingMessageStack(
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
-    onLoadFontsInfoCall: (String) -> String = { "未提供回调方法" }
+    mainActivity: MainActivity? = null,
+    onLoadFontsInfoCall: (String) -> String = { "未提供回调方法" },
+    onCopyFontFilesCall: (String, String, Boolean) -> String = { _, _, _ -> "未提供复制回调方法" },
+    onParseFontsCall: (String) -> String = { "未提供字体解析回调方法" }
 ) {
     // 浮动消息管理器
     val messageManager = remember { FloatingMessageManager() }
@@ -233,15 +372,31 @@ fun MainScreen(
     var showNativeResult by remember { mutableStateOf(false) }
     var showFunctionResult by remember { mutableStateOf(false) }
 
+    // 字体复制功能相关状态
+    var sourceFontDirectory by remember { mutableStateOf("/system/fonts") }
+    var targetFontDirectory by remember { mutableStateOf("/sdcard/copied_fonts") }
+    var overwriteExisting by remember { mutableStateOf(false) }
+    var fontCopyResult by remember { mutableStateOf("") }
+    var showFontCopyResult by remember { mutableStateOf(false) }
+
+    // 字体解析功能相关状态
+    var parseDirectoryPath by remember { mutableStateOf("/system/fonts") }
+    var fontParseResult by remember { mutableStateOf("") }
+    var showFontParseResult by remember { mutableStateOf(false) }
+
     // 异步执行状态管理
     var nativeExecutionState by remember { mutableStateOf(ExecutionState.IDLE) }
     var functionExecutionState by remember { mutableStateOf(ExecutionState.IDLE) }
-    var currentProgress by remember { mutableStateOf(0f) }
+    var fontCopyExecutionState by remember { mutableStateOf(ExecutionState.IDLE) }
+    var fontParseExecutionState by remember { mutableStateOf(ExecutionState.IDLE) }
+
 
     // 协程作用域和取消令牌
     val coroutineScope = rememberCoroutineScope()
     var nativeJob by remember { mutableStateOf<Job?>(null) }
     var functionJob by remember { mutableStateOf<Job?>(null) }
+    var fontCopyJob by remember { mutableStateOf<Job?>(null) }
+    var fontParseJob by remember { mutableStateOf<Job?>(null) }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -249,7 +404,8 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top
         ) {
             // 标题
@@ -262,6 +418,18 @@ fun MainScreen(
 
 
             // 输入框和获取字体信息按钮放在同一行
+            // 字体信息目录选择器
+            FolderSelectionRow(
+                label = "字体目录",
+                selectedPath = directoryPath,
+                onFolderSelect = { 
+                    mainActivity?.selectSourceFolder { path ->
+                        directoryPath = path
+                    }
+                },
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -269,14 +437,7 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                // 目录输入框
-                OutlinedTextField(
-                    value = directoryPath,
-                    onValueChange = { directoryPath = it },
-                    label = { Text("字体目录路径") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
+                Spacer(modifier = Modifier.weight(1f))
 
                 // 从指定目录获取字体信息按钮
                 Row(
@@ -366,11 +527,288 @@ fun MainScreen(
                     title = "系统字体信息：",
                     content = nativeResult,
                     modifier = Modifier.padding(bottom = 16.dp),
-                    onClose = { showNativeResult = false }
+                    onClose = { showNativeResult = false },
+                    messageManager = messageManager
+                )
+            }
+
+            // 字体复制功能部分
+            Text(
+                text = "字体文件复制",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 12.dp, top = 16.dp)
+            )
+
+            // 源目录选择器
+            FolderSelectionRow(
+                label = "源字体目录",
+                selectedPath = sourceFontDirectory,
+                onFolderSelect = { 
+                    mainActivity?.selectSourceFolder { path ->
+                        sourceFontDirectory = path
+                    }
+                },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // 目标目录选择器
+            FolderSelectionRow(
+                label = "目标字体目录",
+                selectedPath = targetFontDirectory,
+                onFolderSelect = { 
+                    mainActivity?.selectTargetFolder { path ->
+                        targetFontDirectory = path
+                    }
+                },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // 覆盖已存在文件的选项
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = overwriteExisting,
+                    onCheckedChange = { overwriteExisting = it }
+                )
+                Text(
+                    text = "覆盖已存在的文件",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+
+            // 开始复制按钮
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        if (fontCopyExecutionState == ExecutionState.IDLE) {
+                            // 开始异步复制
+                            fontCopyExecutionState = ExecutionState.RUNNING
+
+                            fontCopyJob = coroutineScope.launch {
+                                try {
+                                    if (isActive) {
+                                        fontCopyResult = try {
+                                            onCopyFontFilesCall(sourceFontDirectory, targetFontDirectory, overwriteExisting)
+                                        } catch (e: Exception) {
+                                            "字体复制失败: ${e.message}"
+                                        }
+                                        showFontCopyResult = true
+                                        fontCopyExecutionState = ExecutionState.IDLE
+
+                                        // 显示完成提示
+                                        messageManager.showMessage(
+                                            text = "字体文件复制完成！",
+                                            backgroundColor = Color(0xFF9C27B0),
+                                            textColor = Color.White,
+                                            duration = 3000L
+                                        )
+                                    }
+                                } catch (e: CancellationException) {
+                                    // 操作被取消，还原状态
+                                    fontCopyExecutionState = ExecutionState.IDLE
+                                }
+                            }
+                        }
+                    },
+                    enabled = fontCopyExecutionState == ExecutionState.IDLE,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (fontCopyExecutionState == ExecutionState.RUNNING) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text("复制中...")
+                        }
+                    } else {
+                        Text("开始复制字体")
+                    }
+                }
+
+                // 取消按钮
+                if (fontCopyExecutionState == ExecutionState.RUNNING) {
+                    Button(
+                        onClick = {
+                            fontCopyJob?.cancel()
+                            fontCopyJob = null
+                            // 还原状态，允许再次执行
+                            fontCopyExecutionState = ExecutionState.IDLE
+
+                            // 显示取消提醒
+                            messageManager.showMessage(
+                                text = "字体复制已取消",
+                                backgroundColor = Color(0xFFFF9800),
+                                textColor = Color.White,
+                                duration = 2000L
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("取消")
+                    }
+                }
+            }
+
+            // 字体复制结果显示区域
+            if (fontCopyResult.isNotEmpty() && showFontCopyResult) {
+                ResultCard(
+                    title = "字体复制结果：",
+                    content = fontCopyResult,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    onClose = { showFontCopyResult = false },
+                    messageManager = messageManager
+                )
+            }
+
+            // 字体解析功能部分
+            Text(
+                text = "字体解析",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 12.dp, top = 16.dp)
+            )
+
+            // 解析目录选择器
+            FolderSelectionRow(
+                label = "解析字体目录",
+                selectedPath = parseDirectoryPath,
+                onFolderSelect = { 
+                    mainActivity?.selectParseFolder { path ->
+                        parseDirectoryPath = path
+                    }
+                },
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 解析按钮
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (fontParseExecutionState == ExecutionState.IDLE) {
+                                // 开始异步解析
+                                fontParseExecutionState = ExecutionState.RUNNING
+
+                                fontParseJob = coroutineScope.launch {
+                                    try {
+                                        if (isActive) {
+                                            fontParseResult = try {
+                                                onParseFontsCall(parseDirectoryPath)
+                                            } catch (e: Exception) {
+                                                "字体解析失败: ${e.message}"
+                                            }
+                                            showFontParseResult = true
+                                            fontParseExecutionState = ExecutionState.IDLE
+
+                                            // 显示完成提示
+                                            messageManager.showMessage(
+                                                text = "字体解析完成！",
+                                                backgroundColor = Color(0xFF009688),
+                                                textColor = Color.White,
+                                                duration = 3000L
+                                            )
+                                        }
+                                    } catch (e: CancellationException) {
+                                        // 操作被取消，还原状态
+                                        fontParseExecutionState = ExecutionState.IDLE
+                                    }
+                                }
+                            }
+                        },
+                        enabled = fontParseExecutionState == ExecutionState.IDLE,
+                        modifier = Modifier.height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF009688)
+                        )
+                    ) {
+                        if (fontParseExecutionState == ExecutionState.RUNNING) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color.White
+                                )
+                                Text("解析中...")
+                            }
+                        } else {
+                            Text("解析字体")
+                        }
+                    }
+
+                    // 取消按钮
+                    if (fontParseExecutionState == ExecutionState.RUNNING) {
+                        Button(
+                            onClick = {
+                                fontParseJob?.cancel()
+                                fontParseJob = null
+                                // 还原状态，允许再次执行
+                                fontParseExecutionState = ExecutionState.IDLE
+
+                                // 显示取消提醒
+                                messageManager.showMessage(
+                                    text = "字体解析已取消",
+                                    backgroundColor = Color(0xFFFF9800),
+                                    textColor = Color.White,
+                                    duration = 2000L
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier.height(56.dp)
+                        ) {
+                            Text("取消")
+                        }
+                    }
+                }
+            }
+
+            // 字体解析结果显示区域
+            if (fontParseResult.isNotEmpty() && showFontParseResult) {
+                ResultCard(
+                    title = "字体解析结果：",
+                    content = fontParseResult,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    onClose = { showFontParseResult = false },
+                    messageManager = messageManager
                 )
             }
 
             // 函数执行按钮
+            Text(
+                text = "其他功能",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 12.dp, top = 16.dp)
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -454,7 +892,8 @@ fun MainScreen(
                 ResultCard(
                     title = "函数执行结果",
                     content = functionResult,
-                    onClose = { showFunctionResult = false }
+                    onClose = { showFunctionResult = false },
+                    messageManager = messageManager
                 )
             }
         }
@@ -472,8 +911,11 @@ fun ResultCard(
     title: String,
     content: String,
     modifier: Modifier = Modifier,
-    onClose: () -> Unit = {}
+    onClose: () -> Unit = {},
+    messageManager: FloatingMessageManager? = null
 ) {
+    val context = LocalContext.current
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -483,7 +925,7 @@ fun ResultCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 标题和关闭按钮行
+            // 标题和操作按钮行
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -496,15 +938,71 @@ fun ResultCard(
                     modifier = Modifier.weight(1f)
                 )
 
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.size(24.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "关闭",
-                        modifier = Modifier.size(16.dp)
-                    )
+                    // 分享按钮 - 以txt文件方式分享内容
+                    TextButton(
+                        onClick = {
+                            val textLength = content.length
+                            
+                            // 显示开始分享的提示
+                            messageManager?.showMessage(
+                                text = "📁 正在创建文本文件 ($textLength 字符)...",
+                                backgroundColor = Color(0xFF2196F3),
+                                textColor = Color.White,
+                                duration = 2000L
+                            )
+                            
+                            // 创建文件标题（根据原标题生成）
+                            val fileTitle = when {
+                                title.contains("字体信息") -> "字体信息"
+                                title.contains("复制结果") -> "字体复制结果"
+                                title.contains("解析结果") -> "字体解析结果"
+                                title.contains("函数执行") -> "函数执行结果"
+                                else -> "应用结果"
+                            }
+                            
+                            // 分享文件
+                            val shareSuccess = shareTextFile(context, content, fileTitle)
+                            
+                            if (shareSuccess) {
+                                messageManager?.showMessage(
+                                    text = "📤 文件已创建，正在打开分享界面...",
+                                    backgroundColor = Color(0xFF4CAF50),
+                                    textColor = Color.White,
+                                    duration = 3000L
+                                )
+                            } else {
+                                messageManager?.showMessage(
+                                    text = "❌ 文件创建失败，请重试",
+                                    backgroundColor = Color(0xFFF44336),
+                                    textColor = Color.White,
+                                    duration = 3000L
+                                )
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "分享",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // 关闭按钮
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
@@ -522,60 +1020,6 @@ fun ResultCard(
                 )
             }
         }
-    }
-}
-
-// 模拟native代码返回的长内容
-fun generateLongNativeContent(): String {
-    return buildString {
-        appendLine("Native代码执行成功!")
-        appendLine("系统信息:")
-        appendLine("- CPU架构: ARM64")
-        appendLine("- 内存使用: 256MB")
-        appendLine("- 可用存储: 8.5GB")
-        appendLine()
-        appendLine("详细日志:")
-        repeat(20) { i ->
-            appendLine("[$i] Native函数调用 - 时间戳: ${System.currentTimeMillis()}")
-            appendLine("    处理数据块 $i, 大小: ${(Math.random() * 1000).toInt()}KB")
-            appendLine("    状态: 成功")
-            appendLine()
-        }
-        appendLine("Native代码执行完成!")
-    }
-}
-
-// 模拟执行一个返回长内容的函数
-fun executeLongFunction(): String {
-    return buildString {
-        appendLine("函数执行开始...")
-        appendLine("正在初始化参数...")
-        appendLine()
-        appendLine("执行步骤:")
-
-        repeat(15) { step ->
-            appendLine(
-                "步骤 ${step + 1}: ${
-                    when (step % 4) {
-                        0 -> "数据预处理"
-                        1 -> "算法计算"
-                        2 -> "结果验证"
-                        else -> "数据清理"
-                    }
-                }"
-            )
-            appendLine("   - 子任务A: 完成")
-            appendLine("   - 子任务B: 完成")
-            appendLine("   - 耗时: ${(Math.random() * 100).toInt()}ms")
-            appendLine()
-        }
-
-        appendLine("最终结果:")
-        appendLine("- 处理成功率: 98.5%")
-        appendLine("- 总耗时: ${(Math.random() * 5000).toInt()}ms")
-        appendLine("- 输出数据量: ${(Math.random() * 10000).toInt()}条记录")
-        appendLine()
-        appendLine("函数执行完成!")
     }
 }
 
@@ -624,6 +1068,60 @@ suspend fun executeLongFunctionAsync(onProgress: (Float) -> Unit = {}): String =
             appendLine("函数执行完成!")
         }
     }
+
+// 文件夹选择行组件
+@Composable
+fun FolderSelectionRow(
+    label: String,
+    selectedPath: String,
+    onFolderSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 显示选中路径的卡片
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Text(
+                    text = if (selectedPath.isNotEmpty()) selectedPath else "未选择文件夹",
+                    modifier = Modifier.padding(12.dp),
+                    fontSize = 14.sp,
+                    color = if (selectedPath.isNotEmpty()) 
+                        MaterialTheme.colorScheme.onSurfaceVariant 
+                    else 
+                        MaterialTheme.colorScheme.outline,
+                    maxLines = 2
+                )
+            }
+            
+            // 选择按钮
+            Button(
+                onClick = onFolderSelect,
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text("选择")
+            }
+        }
+    }
+}
 
 @Preview(showBackground = true)
 @Composable
