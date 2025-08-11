@@ -1,0 +1,18 @@
+[target.aarch64-linux-android]
+linker = "@ANDROID_CLANG_AARCH64@"
+ar = "@ANDROID_AR@"
+
+[target.armv7-linux-androideabi]
+linker = "@ANDROID_CLANG_ARMV7A@"
+ar = "@ANDROID_AR@"
+
+[target.i686-linux-android]
+linker = "@ANDROID_CLANG_I686@"
+ar = "@ANDROID_AR@"
+
+[target.x86_64-linux-android]
+linker = "@ANDROID_CLANG_X86_64@"
+ar = "@ANDROID_AR@"
+
+[build]
+target-dir = "target"

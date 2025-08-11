@@ -10,6 +10,8 @@
 .DS_Store
 /build
 /captures
+/target
+/.cargo/config.toml
 .externalNativeBuild
 .cxx
 local.properties
